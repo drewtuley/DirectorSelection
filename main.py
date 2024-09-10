@@ -1,4 +1,5 @@
 import re
+import sys
 
 from openai import OpenAI
 
@@ -28,17 +29,21 @@ class Candidate:
 
         self.borda_count = sum((value * (self.rank_size+1 - key)) for key, value in self.choice_rank.items())
 
-        self.reasons.append(sanitize(reason))
-        self.examples.append(sanitize(examples))
+        cleaned = sanitize(reason)
+        if cleaned != '':
+            self.reasons.append(cleaned)
+        cleaned = sanitize(examples)
+        if cleaned != '':
+            self.examples.append(cleaned)
 
     def get_borda_count(self):
         return self.borda_count
 
     def get_reasons(self):
-        return '.'.join(self.reasons)
+        return '\n'.join(self.reasons)
 
     def get_examples(self):
-        return '.'.join(self.examples)
+        return '\n'.join(self.examples)
 
     def __gt__(self, other):
         if self.get_borda_count() < other.get_borda_count():
@@ -127,49 +132,70 @@ def extract_data(sheet_rows):
             suggestions)
 
 
+def reformat(string):
+    return string.replace('. ', '.').replace('  ', ' ').replace('..', '.').replace('. .', '. ')
+
+
+
 if __name__ == '__main__':
-    spreadsheet = 'C:/Users/Andrew.Tuley/Downloads/Harrogate Samaritans - New Director Selection - 2024 (Responses) - Form responses 1.tsv'
+    spreadsheet = sys.argv[1]
     rows = parse_spreadsheet(spreadsheet)
 
     sorted_candidates, unsuitable_candidates, branch_suggestions = extract_data(rows)
+    # print(f'There are {len(sorted_candidates)} preferred candidate choices')
     # for c in sorted_candidates:
     #     print(sorted_candidates[c])
     #
-    for u in unsuitable_candidates:
-        print(unsuitable_candidates[u])
+    # print(f'There are {len(unsuitable_candidates)} unsuitable candidate choices')
+
+    # for u in unsuitable_candidates:
+    #     print(unsuitable_candidates[u])
 
     # print('.'.join(branch_suggestions))
 
     client = OpenAI()
-    top_candidates = [x for x in sorted_candidates.items() if x[1].get_borda_count() > 30]
-    content = f'Summarize the feedback about the following candidates for the role of Director. Combine the Qualities and Skills and Examples for each candidate. Produce the output for each candidate in the same format. Use British English spelling.'
+    top_candidates = [x for x in sorted_candidates.items() if x[1].get_borda_count() > 30 and x[1].name not in ['Andrew 935','Marianne 980']]
+    content = '''Summarize the feedback about the following candidates for the role of Director. 
+    Combine the Qualities & Skills and Examples for each candidate. 
+    If negative feedback exists, include this appropriately. 
+    If possible, indicate numerically how many individuals contributed to each point of the summary. 
+    Produce the output for each candidate in the same format suitable for pasting into Microsoft Word. 
+    Use British English spelling.'''
+
+    print(f'Top Candidates (candidates with Borda Count > 30) out of {len(sorted_candidates)}\n')
     print ('Name\t1st\t2nd\t3rd\t4th\t5th\tBorda Count')
     for top in top_candidates:
         print(f'{top[0]}\t{top[1].get_counts()}')
-        content += f'Candidate: {top[0]}: Qualities and Skills:"' + ''.join(
-            top[1].get_reasons()) + '" Examples: "' + ''.join(
+        content += f'\nCandidate: {top[0]}:\nQualities & Skills:\n"' + ''.join(
+            top[1].get_reasons()) + '"\nExamples:\n"' + ''.join(
             top[1].get_examples()) + '"'
+        if top[0] in unsuitable_candidates:
+            content += '\nNegative feedback:\n"'+ ''.join(unsuitable_candidates[top[0]].get_reasons())+'"'
+    gpt_candidate_content = reformat(content)
 
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
                 "role": "user",
-                "content": f"{content}",
+                "content": f"{gpt_candidate_content}",
             }
         ]
     )
-    print(completion.choices[0].message.content)
+    print(completion.choices[0].message.content.replace(':**',': **'))
 
-    content = f'Summarize the following suggestions for branch improvements. Attempt to find themes where possible and use British English spelling. "{'.'.join(branch_suggestions)}"'
-    # print(content)
+    gpt_branch_content = reformat(f'Summarize the following suggestions for branch improvements. Attempt to find themes where possible and use British English spelling. "{'\n'.join(branch_suggestions)}"')
+    print(f'\nThe Next Three Years:\n')
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
                 "role": "user",
-                "content": f"{content}",
+                "content": f"{gpt_branch_content}",
             }
         ]
     )
-    print(completion.choices[0].message.content)
+    print(completion.choices[0].message.content.replace(':**',': **'))
+
+    print(f'\nAppendix A: Raw Candidate Data\nThe following request was sent to ChatGPT: {gpt_candidate_content}')
+    print(f'\nAppendix B: Raw Branch Improvement Data\nThe following request was sent to ChatGPT:\n{gpt_branch_content}\n')
