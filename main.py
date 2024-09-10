@@ -63,7 +63,7 @@ class Candidate:
         return f'{choice_results}\t{self.borda_count}'
 
 def parse_spreadsheet(sheet_file):
-    rows = list()
+    sheet_rows = list()
 
     with open(sheet_file, 'r') as f:
         new_row = None
@@ -77,12 +77,12 @@ def parse_spreadsheet(sheet_file):
                 m = re.search(r"^\d{,2}/\d{,2}/\d{,4} \d{,2}:\d{,2}:\d{,2}\t", line.strip())
                 if m is not None:
                     if new_row is not None:
-                        rows.append(new_row)
+                        sheet_rows.append(new_row)
                     new_row = line.strip()
                 else:
                     new_row += line.strip()
-        rows.append(new_row)
-    return rows
+        sheet_rows.append(new_row)
+    return sheet_rows
 
 
 def extract_data(sheet_rows):
@@ -133,7 +133,7 @@ def extract_data(sheet_rows):
 
 
 def reformat(string):
-    return string.replace('. ', '.').replace('  ', ' ').replace('..', '.').replace('. .', '. ')
+    return string.replace('.', '. ').replace('  ', ' ').replace('..', '.').replace('. .', '. ').replace('e. g. ','e.g. ').replace('i. e. ','i.e. ').replace('â€™',"'")
 
 
 
@@ -197,5 +197,5 @@ if __name__ == '__main__':
     )
     print(completion.choices[0].message.content.replace(':**',': **'))
 
-    print(f'\nAppendix A: Raw Candidate Data\nThe following request was sent to ChatGPT: {gpt_candidate_content}')
-    print(f'\nAppendix B: Raw Branch Improvement Data\nThe following request was sent to ChatGPT:\n{gpt_branch_content}\n')
+    print(f'\nAppendix A: Raw Candidate Data\n{gpt_candidate_content}\n')
+    print(f'\nAppendix B: Raw Branch Improvement Data\n{gpt_branch_content}\n')
