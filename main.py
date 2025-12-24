@@ -5,7 +5,7 @@ from openai import OpenAI
 
 
 def sanitize(string):
-    return string.replace('"', '')
+    return string.replace('"', "")
 
 
 class Candidate:
@@ -27,23 +27,26 @@ class Candidate:
         except KeyError:
             self.choice_rank[choice] = 1
 
-        self.borda_count = sum((value * (self.rank_size+1 - key)) for key, value in self.choice_rank.items())
+        self.borda_count = sum(
+            (value * (self.rank_size + 1 - key))
+            for key, value in self.choice_rank.items()
+        )
 
         cleaned = sanitize(reason)
-        if cleaned != '':
+        if cleaned != "":
             self.reasons.append(cleaned)
         cleaned = sanitize(examples)
-        if cleaned != '':
+        if cleaned != "":
             self.examples.append(cleaned)
 
     def get_borda_count(self):
         return self.borda_count
 
     def get_reasons(self):
-        return '\n'.join(self.reasons)
+        return "\n".join(self.reasons)
 
     def get_examples(self):
-        return '\n'.join(self.examples)
+        return "\n".join(self.examples)
 
     def __gt__(self, other):
         if self.get_borda_count() < other.get_borda_count():
@@ -55,17 +58,20 @@ class Candidate:
         return self.get_borda_count() == other.get_borda_count()
 
     def __repr__(self):
-        choice_results = ' '.join([str(f'{k}:{v}') for k, v in self.choice_rank.items()])
-        return f'{self.name} {choice_results} Borda Count: {self.borda_count}'
+        choice_results = " ".join(
+            [str(f"{k}:{v}") for k, v in self.choice_rank.items()]
+        )
+        return f"{self.name} {choice_results} Borda Count: {self.borda_count}"
 
     def get_counts(self):
-        choice_results = '\t'.join([str(f'{v}') for k, v in self.choice_rank.items()])
-        return f'{choice_results}\t{self.borda_count}'
+        choice_results = "\t".join([str(f"{v}") for k, v in self.choice_rank.items()])
+        return f"{choice_results}\t{self.borda_count}"
+
 
 def parse_spreadsheet(sheet_file):
     sheet_rows = list()
 
-    with open(sheet_file, 'r') as f:
+    with open(sheet_file, "r") as f:
         new_row = None
         header_done = False
         for line in f.readlines():
@@ -74,7 +80,9 @@ def parse_spreadsheet(sheet_file):
             else:
                 # if the row doesn't start with a timestamp (and it's not the header row) it must be a
                 # continuation of the previous row
-                m = re.search(r"^\d{,2}/\d{,2}/\d{,4} \d{,2}:\d{,2}:\d{,2}\t", line.strip())
+                m = re.search(
+                    r"^\d{,2}/\d{,2}/\d{,4} \d{,2}:\d{,2}:\d{,2}\t", line.strip()
+                )
                 if m is not None:
                     if new_row is not None:
                         sheet_rows.append(new_row)
@@ -92,14 +100,14 @@ def extract_data(sheet_rows):
 
     for row_num, row in enumerate(sheet_rows):
         # print(f'Processing {row_num}')
-        parts = row.split('\t')
+        parts = row.split("\t")
         # collect the 4 top choices, reasons and examples
         for idx, col in enumerate([1, 4, 7, 10]):
             name = parts[col].strip()
             if len(name) > 0:
-                if name.startswith('5th choice'):
-                    fifth = name.split(' ')
-                    name = f'{fifth[-2]} {fifth[-1]}'
+                if name.startswith("5th choice"):
+                    fifth = name.split(" ")
+                    name = f"{fifth[-2]} {fifth[-1]}"
                     choice_num = 5
                 else:
                     choice_num = idx + 1
@@ -114,30 +122,50 @@ def extract_data(sheet_rows):
         # collect the unsuitable candidates and reasons
         for idx, no_gos in enumerate([13, 15]):
             no_go = parts[no_gos].strip()
-            if no_go != '' and no_go.lower() != 'none':
+            if no_go != "" and no_go.lower() != "none":
                 if no_go not in the_unsuitables:
                     unsuitable = Candidate(no_go, range(1, 3))
                 else:
                     unsuitable = the_unsuitables[no_go]
-                unsuitable.set_choice(idx + 1, parts[no_gos + 1], '')
+                unsuitable.set_choice(idx + 1, parts[no_gos + 1], "")
                 the_unsuitables[no_go] = unsuitable
 
         suggestion = parts[17].strip()
-        if suggestion != '':
+        if suggestion != "":
             suggestions.append(suggestion)
 
-
-    return (dict(sorted(the_candidates.items(), key=lambda item: item[1].get_borda_count(), reverse=True)),
-            dict(sorted(the_unsuitables.items(), key=lambda item: item[1].get_borda_count(), reverse=True)),
-            suggestions)
+    return (
+        dict(
+            sorted(
+                the_candidates.items(),
+                key=lambda item: item[1].get_borda_count(),
+                reverse=True,
+            )
+        ),
+        dict(
+            sorted(
+                the_unsuitables.items(),
+                key=lambda item: item[1].get_borda_count(),
+                reverse=True,
+            )
+        ),
+        suggestions,
+    )
 
 
 def reformat(string):
-    return string.replace('.', '. ').replace('  ', ' ').replace('..', '.').replace('. .', '. ').replace('e. g. ','e.g. ').replace('i. e. ','i.e. ').replace('â€™',"'")
+    return (
+        string.replace(".", ". ")
+        .replace("  ", " ")
+        .replace("..", ".")
+        .replace(". .", ". ")
+        .replace("e. g. ", "e.g. ")
+        .replace("i. e. ", "i.e. ")
+        .replace("â€™", "'")
+    )
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     spreadsheet = sys.argv[1]
     rows = parse_spreadsheet(spreadsheet)
 
@@ -154,23 +182,38 @@ if __name__ == '__main__':
     # print('.'.join(branch_suggestions))
 
     client = OpenAI()
-    top_candidates = [x for x in sorted_candidates.items() if x[1].get_borda_count() > 30 and x[1].name not in ['Andrew 935','Marianne 980']]
-    content = '''Summarize the feedback about the following candidates for the role of Director. 
+    top_candidates = [
+        x
+        for x in sorted_candidates.items()
+        if x[1].get_borda_count() > 30
+        and x[1].name not in ["Andrew 935", "Marianne 980"]
+    ]
+    content = """Summarize the feedback about the following candidates for the role of Director. 
     Combine the Qualities & Skills and Examples for each candidate. 
     If negative feedback exists, include this appropriately. 
     If possible, indicate numerically how many individuals contributed to each point of the summary. 
     Produce the output for each candidate in the same format suitable for pasting into Microsoft Word. 
-    Use British English spelling.'''
+    Use British English spelling."""
 
-    print(f'Top Candidates (candidates with Borda Count > 30) out of {len(sorted_candidates)}\n')
-    print ('Name\t1st\t2nd\t3rd\t4th\t5th\tBorda Count')
+    print(
+        f"Top Candidates (candidates with Borda Count > 30) out of {len(sorted_candidates)}\n"
+    )
+    print("Name\t1st\t2nd\t3rd\t4th\t5th\tBorda Count")
     for top in top_candidates:
-        print(f'{top[0]}\t{top[1].get_counts()}')
-        content += f'\nCandidate: {top[0]}:\nQualities & Skills:\n"' + ''.join(
-            top[1].get_reasons()) + '"\nExamples:\n"' + ''.join(
-            top[1].get_examples()) + '"'
+        print(f"{top[0]}\t{top[1].get_counts()}")
+        content += (
+            f'\nCandidate: {top[0]}:\nQualities & Skills:\n"'
+            + "".join(top[1].get_reasons())
+            + '"\nExamples:\n"'
+            + "".join(top[1].get_examples())
+            + '"'
+        )
         if top[0] in unsuitable_candidates:
-            content += '\nNegative feedback:\n"'+ ''.join(unsuitable_candidates[top[0]].get_reasons())+'"'
+            content += (
+                '\nNegative feedback:\n"'
+                + "".join(unsuitable_candidates[top[0]].get_reasons())
+                + '"'
+            )
     gpt_candidate_content = reformat(content)
 
     completion = client.chat.completions.create(
@@ -180,12 +223,14 @@ if __name__ == '__main__':
                 "role": "user",
                 "content": f"{gpt_candidate_content}",
             }
-        ]
+        ],
     )
-    print(completion.choices[0].message.content.replace(':**',': **'))
+    print(completion.choices[0].message.content.replace(":**", ": **"))
 
-    gpt_branch_content = reformat(f'Summarize the following suggestions for branch improvements. Attempt to find themes where possible and use British English spelling. "{'\n'.join(branch_suggestions)}"')
-    print(f'\nThe Next Three Years:\n')
+    gpt_branch_content = reformat(
+        f'Summarize the following suggestions for branch improvements. Attempt to find themes where possible and use British English spelling. "{'\n'.join(branch_suggestions)}"'
+    )
+    print(f"\nThe Next Three Years:\n")
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -193,9 +238,9 @@ if __name__ == '__main__':
                 "role": "user",
                 "content": f"{gpt_branch_content}",
             }
-        ]
+        ],
     )
-    print(completion.choices[0].message.content.replace(':**',': **'))
+    print(completion.choices[0].message.content.replace(":**", ": **"))
 
-    print(f'\nAppendix A: Raw Candidate Data\n{gpt_candidate_content}\n')
-    print(f'\nAppendix B: Raw Branch Improvement Data\n{gpt_branch_content}\n')
+    print(f"\nAppendix A: Raw Candidate Data\n{gpt_candidate_content}\n")
+    print(f"\nAppendix B: Raw Branch Improvement Data\n{gpt_branch_content}\n")
